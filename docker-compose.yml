@@ -1,0 +1,108 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq-aa-compose
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - distribuidos-network
+
+  oauthjwt:
+    build:
+      context: ./OAuthJWT/OAuthJWT
+      dockerfile: Dockerfile
+    container_name: oauthjwt-aa-compose
+    ports:
+      - "5013:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: "http://+:8080"
+      Jwt__Key: "ClaveSuperSecretaParaJWT123456789Vehiculos2026"
+      Jwt__Issuer: "OAuthJWTApi"
+      Jwt__Audience: "VehiculosApiUsers"
+      Jwt__ExpireMinutes: 60
+    networks:
+      - distribuidos-network
+
+  categoria:
+    build:
+      context: ./Categoria.Api/Categoria.Api
+      dockerfile: Dockerfile
+    container_name: categoria-aa-compose
+    ports:
+      - "5011:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: "http://+:8080"
+      ConnectionStrings__CategoriaConnection: "Data Source=host.docker.internal,1433;Initial Catalog=CategoriaDB;User ID=usuario_categoria;Password=1234;Encrypt=False"
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__Port: "5672"
+      RabbitMQ__UserName: admin
+      RabbitMQ__Password: admin123
+      RabbitMQ__QueueName: categoria_creada
+      Jwt__Key: "ClaveSuperSecretaParaJWT123456789Vehiculos2026"
+      Jwt__Issuer: "OAuthJWTApi"
+      Jwt__Audience: "VehiculosApiUsers"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - distribuidos-network
+
+  vehiculo:
+    build:
+      context: ./Vehiculo.Api/Vehiculo.Api
+      dockerfile: Dockerfile
+    container_name: vehiculo-aa-compose
+    ports:
+      - "5012:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: "http://+:8080"
+      ConnectionStrings__VehiculoConnection: "Data Source=host.docker.internal,1433;Initial Catalog=VehiculoDB;User ID=usuario_vehiculo;Password=1234;Encrypt=False"
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__Port: "5672"
+      RabbitMQ__UserName: admin
+      RabbitMQ__Password: admin123
+      RabbitMQ__QueueName: categoria_creada
+      Jwt__Key: "ClaveSuperSecretaParaJWT123456789Vehiculos2026"
+      Jwt__Issuer: "OAuthJWTApi"
+      Jwt__Audience: "VehiculosApiUsers"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - distribuidos-network
+
+  apigateway:
+    build:
+      context: ./ApiGatewayVehiculos/ApiGatewayVehiculos
+      dockerfile: Dockerfile
+    container_name: apigateway-aa-compose
+    ports:
+      - "5010:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: "http://+:8080"
+      ReverseProxy__Clusters__authCluster__Destinations__authDestination__Address: "http://oauthjwt:8080/"
+      ReverseProxy__Clusters__categoriasCluster__Destinations__categoriasDestination__Address: "http://categoria:8080/"
+      ReverseProxy__Clusters__vehiculosCluster__Destinations__vehiculosDestination__Address: "http://vehiculo:8080/"
+    depends_on:
+      - oauthjwt
+      - categoria
+      - vehiculo
+    networks:
+      - distribuidos-network
+
+networks:
+  distribuidos-network:
+    driver: bridge

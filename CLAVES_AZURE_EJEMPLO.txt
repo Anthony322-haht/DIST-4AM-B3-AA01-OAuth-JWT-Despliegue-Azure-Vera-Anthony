@@ -1,0 +1,59 @@
+================================================================================
+PLANTILLA DE VARIABLES DE ENTORNO Y SECRETOS - AZURE (EJEMPLO)
+Trabajo Autónomo: Arquitectura distribuida segura y despliegue en Azure
+================================================================================
+NOTA IMPORTANTE:
+Este archivo contiene únicamente valores de EJEMPLO / PLANTILLA para documentar
+las variables requeridas por los contenedores y servicios en Azure.
+NUNCA suba contraseñas, secretos reales o cadenas de producción a repositorios públicos.
+================================================================================
+
+# ------------------------------------------------------------------------------
+# 1. AZURE SQL DATABASE
+# ------------------------------------------------------------------------------
+SQL_SERVER_NAME=sql-vehiculos-aa-can.database.windows.net
+SQL_ADMIN_USER=sqladmin
+SQL_ADMIN_PASSWORD=TuPasswordSeguroEjemplo2026!*
+
+# Cadenas de Conexión (ConnectionStrings)
+ConnectionStrings__CategoriaConnection="Server=tcp:sql-vehiculos-aa-can.database.windows.net,1433;Initial Catalog=CategoriaDB;User ID=sqladmin;Password=TuPasswordSeguroEjemplo2026!*;Encrypt=True;TrustServerCertificate=False;"
+ConnectionStrings__VehiculoConnection="Server=tcp:sql-vehiculos-aa-can.database.windows.net,1433;Initial Catalog=VehiculoDB;User ID=sqladmin;Password=TuPasswordSeguroEjemplo2026!*;Encrypt=True;TrustServerCertificate=False;"
+
+
+# ------------------------------------------------------------------------------
+# 2. AZURE CONTAINER REGISTRY (ACR)
+# ------------------------------------------------------------------------------
+ACR_LOGIN_SERVER=acrvehiculosaa2026.azurecr.io
+ACR_USERNAME=acrvehiculosaa2026
+ACR_PASSWORD=EjemploClaveAccesoACRGeneradaPorAzureBase64==
+
+
+# ------------------------------------------------------------------------------
+# 3. AUTENTICACIÓN JWT (OAuth / JSON Web Tokens)
+# ------------------------------------------------------------------------------
+Jwt__Key=EstaEsUnaClaveSecretaDeEjemploParaFirmaJWT2026!Minimo32Caracteres
+Jwt__Issuer=OAuthJWTApi
+Jwt__Audience=VehiculosApiUsers
+Jwt__ExpireMinutes=60
+
+
+# ------------------------------------------------------------------------------
+# 4. BROKER DE MENSAJERÍA (RABBITMQ EN AZURE CONTAINER INSTANCES - ACI)
+# ------------------------------------------------------------------------------
+# Panel Web: http://rabbitmq-vehiculos-aa-2026.eastus.azurecontainer.io:15672
+RABBITMQ_DEFAULT_USER=admin
+RABBITMQ_DEFAULT_PASS=RabbitPasswordEjemplo2026!*
+RabbitMQ__HostName=rabbitmq-vehiculos-aa-2026.eastus.azurecontainer.io
+RabbitMQ__Port=5672
+RabbitMQ__UserName=admin
+RabbitMQ__Password=RabbitPasswordEjemplo2026!*
+RabbitMQ__QueueName=categoria_creada
+
+
+# ------------------------------------------------------------------------------
+# 5. YARP API GATEWAY - DESTINOS EN AZURE CONTAINER APPS
+# ------------------------------------------------------------------------------
+ReverseProxy__Clusters__authCluster__Destinations__authDestination__Address=https://oauthjwt.agreeableriver-b258210f.eastus.azurecontainerapps.io/
+ReverseProxy__Clusters__categoriasCluster__Destinations__categoriasDestination__Address=https://categoria.agreeableriver-b258210f.eastus.azurecontainerapps.io/
+ReverseProxy__Clusters__vehiculosCluster__Destinations__vehiculosDestination__Address=https://vehiculo.agreeableriver-b258210f.eastus.azurecontainerapps.io/
+================================================================================

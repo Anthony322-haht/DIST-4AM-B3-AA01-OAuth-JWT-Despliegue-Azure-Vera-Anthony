@@ -1,0 +1,45 @@
+@ApiGateway = https://localhost:7000
+
+############################################################
+### PRUEBAS DE CATEGORIAS A TRAVÉS DEL GATEWAY
+############################################################
+
+### 1. Consultar Categorias
+GET {{ApiGateway}}/api/Categorias
+Accept: application/json
+
+###
+
+### 2. Crear Categoria (Dispara RabbitMQ)
+POST {{ApiGateway}}/api/Categorias
+Content-Type: application/json
+
+{
+  "nombre": "Coupé",
+  "descripcion": "Vehículo deportivo de 2 puertas con silueta aerodinámica",
+  "estado": true
+}
+
+
+############################################################
+### PRUEBAS DE VEHICULOS A TRAVÉS DEL GATEWAY
+############################################################
+
+### 3. Consultar Vehiculos
+GET {{ApiGateway}}/api/Vehiculos
+Accept: application/json
+
+###
+
+### 4. Crear Vehiculo
+POST {{ApiGateway}}/api/Vehiculos
+Content-Type: application/json
+
+{
+  "idCategoria": 1,
+  "marca": "Mazda",
+  "modelo": "Mazda 3",
+  "precio": 26900.00,
+  "stock": 7,
+  "estado": true
+}

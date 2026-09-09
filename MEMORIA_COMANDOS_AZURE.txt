@@ -1,0 +1,180 @@
+================================================================================
+MEMORIA DE COMANDOS DE AZURE - TRABAJO AUTÓNOMO (AA)
+Arquitectura distribuida segura y despliegue en Azure
+================================================================================
+
+# 1. LOGIN Y VERIFICACIÓN DE SUSCRIPCIÓN
+az login
+az account show --output table
+
+# 2. CREACIÓN DEL GRUPO DE RECURSOS (RESOURCE GROUP)
+az group create --name rg-distribuidos-aa --location eastus
+
+# Registro de proveedores de recursos de Azure
+az provider register --namespace Microsoft.App
+az provider register --namespace Microsoft.OperationalInsights
+az provider register --namespace Microsoft.ContainerRegistry
+az provider register --namespace Microsoft.ContainerInstance
+az provider register --namespace Microsoft.Sql
+
+# 3. CREACIÓN DEL REGISTRO DE CONTENEDORES (AZURE CONTAINER REGISTRY - ACR)
+az acr create --resource-group rg-distribuidos-aa --name acrvehiculosaa2026 --sku Basic --admin-enabled true
+
+# 4. AUTENTICACIÓN LOCAL EN ACR, CONSTRUCCIÓN Y PUBLICACIÓN DE IMÁGENES DOCKER
+az acr login --name acrvehiculosaa2026
+
+# Construcción de imágenes Docker
+docker build -t acrvehiculosaa2026.azurecr.io/oauthjwt:v1 ./OAuthJWT/OAuthJWT
+docker build -t acrvehiculosaa2026.azurecr.io/categoria-api:v1 ./Categoria.Api/Categoria.Api
+docker build -t acrvehiculosaa2026.azurecr.io/vehiculo-api:v1 ./Vehiculo.Api/Vehiculo.Api
+docker build -t acrvehiculosaa2026.azurecr.io/apigateway:v1 ./ApiGatewayVehiculos/ApiGatewayVehiculos
+docker tag rabbitmq:4-management acrvehiculosaa2026.azurecr.io/rabbitmq:4-management
+
+# Publicación (Push) hacia Azure Container Registry
+docker push acrvehiculosaa2026.azurecr.io/oauthjwt:v1
+docker push acrvehiculosaa2026.azurecr.io/categoria-api:v1
+docker push acrvehiculosaa2026.azurecr.io/vehiculo-api:v1
+docker push acrvehiculosaa2026.azurecr.io/apigateway:v1
+docker push acrvehiculosaa2026.azurecr.io/rabbitmq:4-management
+
+# 5. CREACIÓN DE SERVIDOR Y BASES DE DATOS EN AZURE SQL (PLAN BASIC)
+# Servidor SQL aprovisionado en Canada Central dentro del Resource Group
+az sql server create `
+  --name sql-vehiculos-aa-can `
+  --resource-group rg-distribuidos-aa `
+  --location canadacentral `
+  --admin-user sqladmin `
+  --admin-password "[SQL_ADMIN_PASSWORD]"
+
+# Reglas de firewall para permitir conexiones de servicios de Azure y herramientas de gestión externas
+az sql server firewall-rule create --resource-group rg-distribuidos-aa --server sql-vehiculos-aa-can --name AllowAllWindowsAzureIps --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0
+az sql server firewall-rule create --resource-group rg-distribuidos-aa --server sql-vehiculos-aa-can --name AllowAllIPs --start-ip-address 0.0.0.0 --end-ip-address 255.255.255.255
+
+# Creación de bases de datos independientes con nivel Basic (5 DTUs)
+az sql db create --resource-group rg-distribuidos-aa --server sql-vehiculos-aa-can --name CategoriaDB --service-objective Basic
+az sql db create --resource-group rg-distribuidos-aa --server sql-vehiculos-aa-can --name VehiculoDB --service-objective Basic
+
+# 6. CREACIÓN DEL ENTORNO DE AZURE CONTAINER APPS
+az containerapp env create --name env-vehiculos-aa --resource-group rg-distribuidos-aa --location eastus
+
+# 7. DESPLIEGUE DE LOS 5 SERVICIOS EN AZURE
+
+# A. Despliegue de RabbitMQ en Azure Container Instances (ACI)
+# Permite exponer simultáneamente el puerto AMQP (5672) y el panel web de gestión HTTP (15672)
+az container create `
+  --resource-group rg-distribuidos-aa `
+  --name rabbitmq-aci `
+  --image acrvehiculosaa2026.azurecr.io/rabbitmq:4-management `
+  --registry-login-server acrvehiculosaa2026.azurecr.io `
+  --registry-username acrvehiculosaa2026 `
+  --registry-password "[ACR_PASSWORD]" `
+  --dns-name-label rabbitmq-vehiculos-aa-2026 `
+  --ports 5672 15672 `
+  --environment-variables RABBITMQ_DEFAULT_USER=[RABBITMQ_USER] RABBITMQ_DEFAULT_PASS=[RABBITMQ_PASSWORD] `
+  --cpu 1 --memory 1.5 `
+  --location eastus `
+  --os-type Linux
+
+# B. Despliegue de OAuthJWT (Servicio independiente de autenticación y emisión JWT en Container Apps)
+az containerapp create `
+  --name oauthjwt `
+  --resource-group rg-distribuidos-aa `
+  --environment env-vehiculos-aa `
+  --image acrvehiculosaa2026.azurecr.io/oauthjwt:v1 `
+  --registry-server acrvehiculosaa2026.azurecr.io `
+  --registry-username acrvehiculosaa2026 `
+  --registry-password "[ACR_PASSWORD]" `
+  --target-port 8080 `
+  --ingress external `
+  --cpu 0.25 --memory 0.5Gi `
+  --env-vars `
+    ASPNETCORE_ENVIRONMENT=Development `
+    Jwt__Key=[JWT_SECRET_KEY] `
+    Jwt__Issuer=OAuthJWTApi `
+    Jwt__Audience=VehiculosApiUsers `
+    Jwt__ExpireMinutes=60
+
+# C. Despliegue de Categoria.Api (Microservicio 1 - Productor en Container Apps)
+az containerapp create `
+  --name categoria `
+  --resource-group rg-distribuidos-aa `
+  --environment env-vehiculos-aa `
+  --image acrvehiculosaa2026.azurecr.io/categoria-api:v1 `
+  --registry-server acrvehiculosaa2026.azurecr.io `
+  --registry-username acrvehiculosaa2026 `
+  --registry-password "[ACR_PASSWORD]" `
+  --target-port 8080 `
+  --ingress external `
+  --cpu 0.25 --memory 0.5Gi `
+  --env-vars `
+    ASPNETCORE_ENVIRONMENT=Development `
+    ConnectionStrings__CategoriaConnection="Server=tcp:sql-vehiculos-aa-can.database.windows.net,1433;Initial Catalog=CategoriaDB;User ID=sqladmin;Password=[SQL_ADMIN_PASSWORD];Encrypt=True;TrustServerCertificate=False;" `
+    RabbitMQ__HostName=rabbitmq-vehiculos-aa-2026.eastus.azurecontainer.io `
+    RabbitMQ__Port=5672 `
+    RabbitMQ__UserName=[RABBITMQ_USER] `
+    RabbitMQ__Password=[RABBITMQ_PASSWORD] `
+    RabbitMQ__QueueName=categoria_creada `
+    Jwt__Key=[JWT_SECRET_KEY] `
+    Jwt__Issuer=OAuthJWTApi `
+    Jwt__Audience=VehiculosApiUsers
+
+# D. Despliegue de Vehiculo.Api (Microservicio 2 - Consumidor en Container Apps)
+az containerapp create `
+  --name vehiculo `
+  --resource-group rg-distribuidos-aa `
+  --environment env-vehiculos-aa `
+  --image acrvehiculosaa2026.azurecr.io/vehiculo-api:v1 `
+  --registry-server acrvehiculosaa2026.azurecr.io `
+  --registry-username acrvehiculosaa2026 `
+  --registry-password "[ACR_PASSWORD]" `
+  --target-port 8080 `
+  --ingress external `
+  --cpu 0.25 --memory 0.5Gi `
+  --min-replicas 1 `
+  --env-vars `
+    ASPNETCORE_ENVIRONMENT=Development `
+    ConnectionStrings__VehiculoConnection="Server=tcp:sql-vehiculos-aa-can.database.windows.net,1433;Initial Catalog=VehiculoDB;User ID=sqladmin;Password=[SQL_ADMIN_PASSWORD];Encrypt=True;TrustServerCertificate=False;" `
+    RabbitMQ__HostName=rabbitmq-vehiculos-aa-2026.eastus.azurecontainer.io `
+    RabbitMQ__Port=5672 `
+    RabbitMQ__UserName=[RABBITMQ_USER] `
+    RabbitMQ__Password=[RABBITMQ_PASSWORD] `
+    RabbitMQ__QueueName=categoria_creada `
+    Jwt__Key=[JWT_SECRET_KEY] `
+    Jwt__Issuer=OAuthJWTApi `
+    Jwt__Audience=VehiculosApiUsers
+
+# E. Despliegue de ApiGatewayVehiculos (YARP Reverse Proxy en Container Apps)
+az containerapp create `
+  --name apigateway `
+  --resource-group rg-distribuidos-aa `
+  --environment env-vehiculos-aa `
+  --image acrvehiculosaa2026.azurecr.io/apigateway:v1 `
+  --registry-server acrvehiculosaa2026.azurecr.io `
+  --registry-username acrvehiculosaa2026 `
+  --registry-password "[ACR_PASSWORD]" `
+  --target-port 8080 `
+  --ingress external `
+  --cpu 0.25 --memory 0.5Gi `
+  --env-vars `
+    ASPNETCORE_ENVIRONMENT=Development `
+    ReverseProxy__Clusters__authCluster__Destinations__authDestination__Address=https://oauthjwt.agreeableriver-b258210f.eastus.azurecontainerapps.io/ `
+    ReverseProxy__Clusters__categoriasCluster__Destinations__categoriasDestination__Address=https://categoria.agreeableriver-b258210f.eastus.azurecontainerapps.io/ `
+    ReverseProxy__Clusters__vehiculosCluster__Destinations__vehiculosDestination__Address=https://vehiculo.agreeableriver-b258210f.eastus.azurecontainerapps.io/
+
+# 8. PRUEBAS DE VERIFICACIÓN EN AZURE (DESDE INTERNET)
+
+# Login para obtener Token JWT
+$resp = Invoke-RestMethod -Uri "https://apigateway.agreeableriver-b258210f.eastus.azurecontainerapps.io/api/Auth/login" -Method Post -ContentType "application/json" -Body '{"usuario":"admin","password":"[PASSWORD]"}'
+
+# Prueba de endpoint sin token (Debe retornar 401 Unauthorized)
+curl -i https://apigateway.agreeableriver-b258210f.eastus.azurecontainerapps.io/api/Categorias
+
+# Prueba de endpoint con token válido (Debe retornar 200 OK con datos)
+Invoke-RestMethod -Uri "https://apigateway.agreeableriver-b258210f.eastus.azurecontainerapps.io/api/Categorias" -Method Get -Headers @{ Authorization = "Bearer $($resp.token)" }
+
+# Acceso al Panel Web Gráfico de RabbitMQ Management en Azure
+# URL: http://rabbitmq-vehiculos-aa-2026.eastus.azurecontainer.io:15672
+# Usuario: admin | Password: [RABBITMQ_PASSWORD]
+
+# 9. COMANDO DE LIMPIEZA / ELIMINACIÓN DE RECURSOS (POST-REVISIÓN)
+az group delete --name rg-distribuidos-aa --yes --no-wait

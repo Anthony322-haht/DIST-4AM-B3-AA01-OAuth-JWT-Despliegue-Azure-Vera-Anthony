@@ -1,0 +1,29 @@
+# VISUAL STUDIO
+.vs/
+**/.vs/
+
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# .NET - ARCHIVOS GENERADOS
+bin/
+obj/
+**/bin/
+**/obj/
+
+Debug/
+Release/
+**/Debug/
+**/Release/
+
+# ARCHIVOS TEMPORALES
+*.tmp
+*.temp
+*.log
+*.cache
+
+# PUBLICACION
+publish/
+**/publish/
