@@ -1,7 +1,7 @@
 # Trabajo Autónomo: Arquitectura Distribuida Segura y Despliegue en Azure
 
 **Materia:** Aplicaciones Distribuidas  
-**Autor:** [Tu Nombre / Estudiante]  
+**Autor:** Anthony Javier Vera Zambrano  
 **Fecha de Entrega:** Septiembre 2026  
 **Fecha de Disponibilidad de Recursos en Azure:** Hasta el 13/09/2026  
 
